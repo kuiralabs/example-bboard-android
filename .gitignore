@@ -29,7 +29,7 @@ yarn-debug.log*
 Thumbs.db
 
 # Contract assets are generated into app/src/main/assets/ from the source of
-# truth (contract/src/managed/bboard) by the com.midnight.kuira.contract plugin
+# truth (contract/src/managed/bboard) by the io.github.kuiralabs.contract plugin
 # at build time — sourced, not stored.
 app/src/main/assets/runtime/bboard-contract.js
 app/src/main/assets/keys/

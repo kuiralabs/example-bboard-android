@@ -17,7 +17,7 @@ a lossless typed ledger read for the current message.
 - **Wallet** — `WalletStatusPanel` from the SDK. NIGHT + DUST balance, receive
   QR, dust registration, network switch.
 - **Contract** — `bboard.compact` (`contract/src/`), compiled to JS + proving
-  keys under `contract/src/managed/bboard`. The `com.midnight.kuira.contract`
+  keys under `contract/src/managed/bboard`. The `io.github.kuiralabs.contract`
   Gradle plugin syncs it into the app's assets at build (`kuiraContract { … }`
   in `app/build.gradle.kts`).
 - **dApp logic** — `BBoardViewModel` drives deploy → `post` → `takeDown`, with a
@@ -33,7 +33,7 @@ a lossless typed ledger read for the current message.
 Then forge a sigil, fund the wallet on localnet, deploy a board, and post.
 
 **Alpha note:** this example pins `io.github.kuiralabs:dapp-ui` and the
-`com.midnight.kuira.contract` plugin at their alpha versions. Until the alpha is
+`io.github.kuiralabs.contract` plugin at their alpha versions. Until the alpha is
 on Maven Central, `settings.gradle.kts` resolves them from `mavenLocal()` — see
 the comment there. To point it at your own passkey domain, set `rpId` in
 `IdentityConfigModule` and host a matching `assetlinks.json`.
