@@ -2,7 +2,7 @@
 //
 // BBoard is intentionally its own Gradle project (separate from the parent
 // Kuira workspace) so it consumes the Kuira SDK the same way a third-party
-// dApp would — Maven coordinates from `mavenLocal()`, not project refs. This
+// dApp would — Maven coordinates from Maven Central, not project refs. This
 // keeps the example faithful to the actual integration story we tell external
 // developers.
 plugins {

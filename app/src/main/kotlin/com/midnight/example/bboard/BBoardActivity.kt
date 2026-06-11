@@ -54,6 +54,7 @@ import com.midnight.kuira.core.network.MidnightNetwork
 import androidx.compose.ui.text.AnnotatedString
 import com.midnight.kuira.dapp.ContractCallProgressBar
 import com.midnight.kuira.dapp.PanelBar
+import com.midnight.kuira.dapp.dappPressable
 import com.midnight.kuira.dapp.sigil.SigilStatus
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -582,9 +583,8 @@ private fun ActionButton(
     Box(
         modifier = modifier
             .height(BUTTON_HEIGHT_DP.dp)
-            .clip(Shapes.Button)
-            .background(bg)
-            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
+            .dappPressable(shape = Shapes.Button, enabled = enabled, onClick = onClick)
+            .background(bg),
         contentAlignment = Alignment.Center,
     ) {
         Text(

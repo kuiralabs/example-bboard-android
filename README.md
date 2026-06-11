@@ -32,11 +32,10 @@ a lossless typed ledger read for the current message.
 
 Then forge a sigil, fund the wallet on localnet, deploy a board, and post.
 
-**Alpha note:** this example pins `io.github.kuiralabs:dapp-ui` and the
-`io.github.kuiralabs.contract` plugin at their alpha versions. Until the alpha is
-on Maven Central, `settings.gradle.kts` resolves them from `mavenLocal()` — see
-the comment there. To point it at your own passkey domain, set `rpId` in
-`IdentityConfigModule` and host a matching `assetlinks.json`.
+This example pins `io.github.kuiralabs:dapp-ui` and the
+`io.github.kuiralabs.contract` plugin, resolved from Maven Central. To point it
+at your own passkey domain, set `rpId` in `IdentityConfigModule` and host a
+matching `assetlinks.json`.
 
 ## License
 
