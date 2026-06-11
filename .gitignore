@@ -3,6 +3,9 @@
 build/
 out/
 .kotlin/
+# The wrapper jar MUST be committed — a fresh clone can't run ./gradlew without
+# it. Un-ignore it past the global ~/.gitignore_global `*.jar` rule.
+!gradle/wrapper/gradle-wrapper.jar
 
 # Android
 *.apk
