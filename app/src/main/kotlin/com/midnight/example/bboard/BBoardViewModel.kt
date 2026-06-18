@@ -15,6 +15,7 @@ import com.midnight.kuira.core.compact.proving.ProvingKeyManager
 import com.midnight.kuira.core.identity.sigil.SigilStateStore
 import com.midnight.kuira.core.ledger.api.TransactionSubmitter
 import com.midnight.kuira.sdk.MidnightSdk
+import com.midnight.kuira.core.network.MidnightNetwork
 import com.midnight.kuira.sdk.walletruntime.MidnightSdkProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -47,6 +48,14 @@ class BBoardViewModel @Inject constructor(
 
     private val _state = MutableStateFlow<BBoardState>(BBoardState.Setup)
     val state: StateFlow<BBoardState> = _state
+
+    // #285: the SDK's durable NetworkPreferenceStore (via MidnightSdkProvider) is the
+    // single source of truth for the active network — it survives process death, so
+    // BBoard no longer keeps its own NetworkPref mirror. The wallet panel seeds from
+    // this and writes back through it; BBoard's contract ops read the same network off
+    // the shared SDK config.
+    val selectedNetwork: StateFlow<MidnightNetwork> get() = sdkProvider.selectedNetwork
+    fun selectNetwork(network: MidnightNetwork) = sdkProvider.selectNetwork(network)
 
     // Contract handle + its repository — BBoard's own state, reset on
     // [disconnect]. The SDK and its MidnightConfig are owned by

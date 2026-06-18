@@ -1,6 +1,5 @@
 package com.midnight.example.bboard
 
-import android.content.Context
 import android.os.Bundle
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
@@ -48,15 +47,18 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import com.midnight.kuira.core.compact.ContractCallStage
-import com.midnight.kuira.core.network.MidnightNetwork
 import androidx.compose.ui.text.AnnotatedString
 import com.midnight.kuira.dapp.ContractCallProgressBar
 import com.midnight.kuira.dapp.PanelBar
 import com.midnight.kuira.dapp.dappPressable
+import androidx.activity.result.contract.ActivityResultContracts
+import com.midnight.kuira.dapp.lock.SessionLockGate
+import com.midnight.kuira.sdk.walletruntime.WalletNotifications
 import com.midnight.kuira.dapp.sigil.SigilStatus
+import com.midnight.kuira.sdk.walletruntime.SessionLock
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 // ── Design Tokens ──
 
@@ -106,9 +108,25 @@ private const val SPINNER_SIZE_DP = 24
 
 @AndroidEntryPoint
 class BBoardActivity : FragmentActivity() {
+    /** Session auto-lock (#14) — onUserInteraction resets its foreground idle timer. */
+    @Inject lateinit var sessionLock: SessionLock
+
+    // POST_NOTIFICATIONS for the dust-sync Live Update (#235). Best-effort: if the
+    // user denies, the background sync still runs — just without a visible notification.
+    private val notifPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* best-effort */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { BBoardApp() }
+        if (WalletNotifications.shouldRequest(this)) {
+            notifPermission.launch(WalletNotifications.PERMISSION)
+        }
+        setContent { SessionLockGate { BBoardApp() } }
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        sessionLock.onUserActivity()
     }
 }
 
@@ -120,12 +138,10 @@ fun BBoardApp(viewModel: BBoardViewModel = hiltViewModel()) {
     // connect/deploy are followers that wait on the shared SDK, so this screen
     // no longer needs a FragmentActivity handle.
 
-    // The wallet panel is the in-session network authority: its chip drives
-    // MidnightSdkProvider's config, and BBoard's contract ops read the active
-    // network straight off the shared SDK. We still avoid a host-side mutable
-    // mirror (that was a second source of truth that drifted) — the only
-    // host-side touch is seeding the panel's initial from prefs + persisting
-    // the choice on change (see NetworkPref below), so it survives a kill.
+    // The wallet panel is the network authority: its chip drives the SDK's
+    // durable NetworkPreferenceStore, and BBoard's contract ops read the active
+    // network straight off the shared SDK. No host-side mirror (that was a second
+    // source of truth that drifted) — the store survives a kill on its own.
 
     // Mirror of the sigil panel's status so BBoard can gate the onboarding
     // banner. Panel emits None on first composition until it loads any
@@ -138,11 +154,10 @@ fun BBoardApp(viewModel: BBoardViewModel = hiltViewModel()) {
     // recomposition / process restore anyway, so this is fine.
     var sigilStatus: SigilStatus by remember { mutableStateOf<SigilStatus>(SigilStatus.None) }
 
-    // Persist the wallet panel's network choice across launches. The panel
-    // stays the in-session source of truth (no host-side mirror state); we only
-    // seed its initial from prefs and write back on change. The SDK is network-
-    // agnostic — remembering the choice is the app's job.
-    val context = LocalContext.current
+    // #285: the SDK's durable NetworkPreferenceStore is the single source of
+    // truth for the active network — it survives process death, so BBoard seeds
+    // the panel from it and writes back through it (no host-side prefs mirror).
+    val selectedNetwork by viewModel.selectedNetwork.collectAsState()
 
     Surface(modifier = Modifier.fillMaxSize(), color = Colors.Background) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -152,8 +167,8 @@ fun BBoardApp(viewModel: BBoardViewModel = hiltViewModel()) {
             // the BBoard title below it — title no longer fights chip widths
             // for the same row on narrow phones.
             PanelBar(
-                network = NetworkPref.load(context),
-                onNetworkChange = { NetworkPref.save(context, it) },
+                network = selectedNetwork,
+                onNetworkChange = { viewModel.selectNetwork(it) },
                 onSigilStatusChange = { sigilStatus = it },
             )
             Column(
@@ -607,27 +622,3 @@ private fun textFieldColors() = OutlinedTextFieldDefaults.colors(
     unfocusedBorderColor = Colors.Disabled,
     cursorColor = Colors.OnSurface,
 )
-
-/**
- * App-layer persistence of the wallet panel's selected network across launches.
- * Mirrors Midnight Kicks' NetworkPref — the SDK is network-agnostic, so
- * remembering the choice is the app's responsibility. Plain prefs; the network
- * id isn't a secret.
- */
-private object NetworkPref {
-    private const val PREFS = "bboard_network_pref"
-    private const val KEY = "selected_network"
-
-    fun load(ctx: Context): MidnightNetwork =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY, null)
-            ?.let { name -> runCatching { MidnightNetwork.valueOf(name) }.getOrNull() }
-            ?: MidnightNetwork.UNDEPLOYED
-
-    fun save(ctx: Context, network: MidnightNetwork) {
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY, network.name)
-            .apply()
-    }
-}

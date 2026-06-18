@@ -4,11 +4,18 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.dagger.hilt.android")
     id("com.google.devtools.ksp")
-    id("io.github.kuiralabs.contract") version "0.1.0-alpha03"
+    id("io.github.kuiralabs.contract") version "0.1.0-alpha04"
+    // Auto `adb reverse` of the localnet ports on installDebug to a physical
+    // device — no manual step. No-op on emulators (they use 10.0.2.2).
+    id("io.github.kuiralabs.localnet") version "0.1.0-alpha04"
 }
 
 kuiraContract {
     source.set("../contract/src/managed/bboard")
+    // Offline bundle (#256): ship the protocol wallet proving keys in the APK so a
+    // fresh device proves without the runtime S3 download. ~24MB; downloaded once
+    // at build time into a shared Gradle cache, then staged into assets/wallet-keys.
+    bundleWalletKeys.set(true)
 }
 
 android {
@@ -41,7 +48,7 @@ dependencies {
     // SDK surface BBoard touches directly (compact-engine, identity, network,
     // wallet-runtime, wallet-seed, auth, crypto, ledger) so the types are on
     // BBoard's compile classpath transitively. No per-module redeclaration.
-    implementation("io.github.kuiralabs:dapp-ui:0.1.0-alpha03")
+    implementation("io.github.kuiralabs:dapp-ui:0.1.0-alpha04")
 
     // AndroidX directly used by BBoard (FragmentActivity host, Compose). Things
     // Kuira pulls in transitively (biometric, credentials, room, etc.) come

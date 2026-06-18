@@ -1,6 +1,8 @@
 package com.midnight.example.bboard
 
 import android.app.Application
+import com.midnight.kuira.sdk.walletruntime.SessionLock
+import com.midnight.kuira.sdk.walletruntime.WalletForegroundService
 import dagger.hilt.android.HiltAndroidApp
 
 /**
@@ -16,4 +18,16 @@ import dagger.hilt.android.HiltAndroidApp
  * Registered as `android:name=".BBoardApplication"` in the manifest.
  */
 @HiltAndroidApp
-class BBoardApplication : Application()
+class BBoardApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        // Session auto-lock (#14): app-level triggers (background + screen-off).
+        // Foreground idle is reset per-Activity via onUserInteraction.
+        SessionLock.attach(this)
+        // Keep wallet operations alive across backgrounding: shows a progress
+        // notification for any in-flight op (dust sync, send, contract calls) and a
+        // finalization push on completion. No-op until one runs; tears down on
+        // foreground / completion / session lock.
+        WalletForegroundService.attach(this)
+    }
+}
