@@ -3,7 +3,16 @@ package com.midnight.example.bboard
 import android.os.Bundle
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -17,9 +26,11 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -27,9 +38,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,11 +49,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
@@ -49,6 +69,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.platform.LocalClipboardManager
 import com.midnight.kuira.core.compact.ContractCallStage
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import com.midnight.kuira.dapp.ContractCallProgressBar
 import com.midnight.kuira.dapp.PanelBar
 import com.midnight.kuira.dapp.dappPressable
@@ -62,18 +83,60 @@ import javax.inject.Inject
 
 // ── Design Tokens ──
 
+// bboard is the HOST demo app — its job is to show the neutral, monochrome Kuira
+// pills dropping into a strongly-branded host. The brand here is a Renaissance
+// proclamation scroll: aged parchment + period pigments (iron-gall ink, vermilion
+// rubric red, lapis ultramarine, burnished gold). The value NAMES are kept so the
+// whole screen re-themes from this one block; only the meanings changed.
 private object Colors {
-    val Background = Color(0xFF0A0A0A)
-    val Surface = Color(0xFF111111)
-    val ErrorSurface = Color(0xFF1A0A0A)
-    val Accent = Color(0xFF64B5F6)
-    val Success = Color(0xFF4CAF8B)
-    val Error = Color(0xFFFF6666)
-    val OnSurface = Color.White
-    val OnSurfaceDim = Color.White.copy(alpha = 0.45f)
-    val OnSurfaceSubtle = Color.White.copy(alpha = 0.25f)
-    val Disabled = Color.White.copy(alpha = 0.08f)
+    // Parchment surfaces.
+    val Background = Color(0xFFEAD9B0)       // aged vellum
+    val BackgroundDeep = Color(0xFFD3BC8A)   // shaded edge of the sheet
+    val Surface = Color(0xFFF1E6C6)          // lit parchment plaque
+    val ErrorSurface = Color(0xFFE9D3BE)     // faintly scorched parchment
+
+    // Period pigments, keyed to meaning across the screens.
+    val Electric = Color(0xFF27406E)         // ultramarine (lapis) — primary / links
+    val Magenta = Color(0xFFA82815)          // vermilion — the posted notice
+    val Violet = Color(0xFFB0892E)           // burnished gold — vacant / drafting
+    val Teal = Color(0xFF3E5C4B)             // verdigris — addresses / on-chain
+    val Amber = Color(0xFFB0892E)            // gold — identity / attention
+
+    val Accent = Electric
+    val Success = Color(0xFF3E5C4B)          // verdigris green
+    val Error = Color(0xFF7E1C12)            // deep oxblood
+
+    val OnSurface = Color(0xFF3A2A17)        // iron-gall ink — primary text
+    val OnSurfaceDim = Color(0xFF5C4A30)     // soft ink — secondary
+    val OnSurfaceSubtle = Color(0xFF8A7148)  // faint ink — tertiary / hints
+    val Disabled = Color(0x1A3A2A17)         // faint ink wash
+    val OnBright = Color(0xFFF3E7C8)         // parchment-light lettering on a vermilion plaque
 }
+
+private object Gradients {
+    val Brand = Brush.linearGradient(listOf(Color(0xFFA82815), Color(0xFF7E1C12)))            // vermilion seal
+    val Aurora = Brush.linearGradient(listOf(Colors.Violet, Colors.Magenta, Colors.Electric)) // gilt → rubric → lapis
+    val Screen = Brush.verticalGradient(listOf(Colors.Surface, Colors.Background, Colors.BackgroundDeep)) // lit vellum
+    val Note = Brush.linearGradient(listOf(Color(0xFFF6EAC8), Color(0xFFE6D2A6)))             // parchment notice
+}
+
+// Period typefaces, bundled (both SIL Open Font License):
+//  · EB Garamond — a digitization of Claude Garamond's 1592 Berner specimen; the body hand.
+//  · Cinzel — Roman inscriptional capitals; the display/heading hand.
+// Variable fonts: the weight axis is driven from each Font's `weight` argument.
+private val Garamond = FontFamily(
+    Font(R.font.eb_garamond, FontWeight.Normal),
+    Font(R.font.eb_garamond, FontWeight.Medium),
+    Font(R.font.eb_garamond, FontWeight.SemiBold),
+    Font(R.font.eb_garamond, FontWeight.Bold),
+    Font(R.font.eb_garamond_italic, FontWeight.Normal, FontStyle.Italic),
+    Font(R.font.eb_garamond_italic, FontWeight.Medium, FontStyle.Italic),
+)
+private val Cinzel = FontFamily(
+    Font(R.font.cinzel, FontWeight.Normal),
+    Font(R.font.cinzel, FontWeight.SemiBold),
+    Font(R.font.cinzel, FontWeight.Bold),
+)
 
 private object Type {
     val Title = 24.sp
@@ -159,7 +222,15 @@ fun BBoardApp(viewModel: BBoardViewModel = hiltViewModel()) {
     // the panel from it and writes back through it (no host-side prefs mirror).
     val selectedNetwork by viewModel.selectedNetwork.collectAsState()
 
-    Surface(modifier = Modifier.fillMaxSize(), color = Colors.Background) {
+    Box(modifier = Modifier.fillMaxSize().background(Gradients.Screen)) {
+        // Garamond is the default hand for everything below — INCLUDING the Kuira
+        // pills in PanelBar, which inherit LocalTextStyle (the SDK pins only its
+        // structural monospace fields, e.g. the DID/address). Providing LocalTextStyle
+        // here is how a host themes the pill's typography; its colour is themed
+        // separately via WalletPanelColors.
+        CompositionLocalProvider(
+            LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = Garamond),
+        ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Top panel bar: sigil chip (left) + wallet chip (right). Pulled
             // out of the scroll container so the chips stay pinned to the top
@@ -182,8 +253,22 @@ fun BBoardApp(viewModel: BBoardViewModel = hiltViewModel()) {
                         bottom = Spacing.ScreenPadding,
                     )
             ) {
-                Text("bboard", color = Colors.OnSurface, fontSize = Type.Title, fontWeight = FontWeight.W300, letterSpacing = 4.sp)
-                Text("midnight bulletin board", color = Colors.OnSurfaceDim, fontSize = Type.Caption, letterSpacing = 2.sp)
+                Text(
+                    "BBOARD",
+                    style = TextStyle(brush = animatedAuroraBrush(), fontFamily = Cinzel),
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 8.sp,
+                )
+                Text(
+                    "Tabula Nuntiorum · a midnight bulletin board",
+                    color = Colors.OnSurfaceDim,
+                    fontStyle = FontStyle.Italic,
+                    fontSize = Type.Caption,
+                    letterSpacing = 1.sp,
+                )
+                Spacer(modifier = Modifier.height(Spacing.ItemGap))
+                OrnamentRule()
                 Spacer(modifier = Modifier.height(Spacing.SectionGap))
 
                 when (val s = state) {
@@ -203,6 +288,7 @@ fun BBoardApp(viewModel: BBoardViewModel = hiltViewModel()) {
                     )
                 }
             }
+        }
         }
     }
 }
@@ -235,8 +321,8 @@ private fun SetupScreen(
     // Auto-hides once the user has forged (or restored) a sigil — the chip
     // is then the canonical entry point.
     if (sigilStatus is SigilStatus.None || sigilStatus is SigilStatus.Error) {
-        DarkCard {
-            Text("identity required", color = Colors.Accent, fontSize = Type.Caption, letterSpacing = 2.sp)
+        DarkCard(accent = Colors.Amber) {
+            Text("identity required", color = Colors.Amber, fontSize = Type.Caption, letterSpacing = 2.sp)
             Spacer(modifier = Modifier.height(Spacing.SmallGap))
             Text(
                 "You need a sigil before posting to the board. Tap the sigil chip in the top bar to forge one.",
@@ -248,8 +334,8 @@ private fun SetupScreen(
     }
 
     // ── Contract Connection Card ──
-    DarkCard {
-        Text("join a board", color = Colors.OnSurfaceDim, fontSize = Type.Caption, letterSpacing = 2.sp)
+    DarkCard(accent = Colors.Electric) {
+        Text("join a board", color = Colors.Electric, fontSize = Type.Caption, letterSpacing = 2.sp)
         Spacer(modifier = Modifier.height(Spacing.TinyGap))
         Text(
             "Paste the contract address someone shared to connect to their bulletin board.",
@@ -325,7 +411,7 @@ private fun ConnectedScreen(
     // commit log + Kicks wishlist #27 for the future delegated-access-
     // keys consumer that will revive a similar UI in a scoped context.
 
-    DarkCard {
+    DarkCard(accent = Colors.Teal) {
         // Contract address \u2014 labeled + tap-to-copy.
         //
         // Beginners land here right after connecting. Previously this was a
@@ -333,7 +419,7 @@ private fun ConnectedScreen(
         // tell what it was. Now: a clear label, the hash as the card's primary
         // (brighter) content, an obvious copy affordance, and one line on what
         // it's for.
-        Text("contract address", color = Colors.OnSurfaceDim, fontSize = Type.Caption, letterSpacing = 2.sp)
+        Text("contract address", color = Colors.Teal, fontSize = Type.Caption, letterSpacing = 2.sp)
         Spacer(modifier = Modifier.height(Spacing.TinyGap))
 
         val clipboardManager = LocalClipboardManager.current
@@ -390,7 +476,7 @@ private fun ConnectedScreen(
 
     Spacer(modifier = Modifier.height(Spacing.SectionGap))
 
-    DarkCard {
+    DarkCard(accent = Colors.Violet) {
         when (val board = state.boardState) {
             is BoardState.Vacant -> VacantBoard(onPost = onPost, isEnabled = isReady)
             is BoardState.Working -> WorkingBoard(board.stage)
@@ -412,7 +498,7 @@ private fun ConnectedScreen(
 @Composable
 private fun VacantBoard(onPost: (String) -> Unit, isEnabled: Boolean = true) {
     var message by remember { mutableStateOf("") }
-    Text("board is vacant", color = Colors.OnSurfaceDim, fontSize = Type.Caption, letterSpacing = 2.sp)
+    Text("board is vacant", color = Colors.Violet, fontSize = Type.Caption, letterSpacing = 2.sp)
     Spacer(modifier = Modifier.height(Spacing.TinyGap))
     Text(
         "No message posted yet. Write one below — it's stored on-chain for anyone on this board to see.",
@@ -441,7 +527,7 @@ private fun WorkingBoard(stage: ContractCallStage?) {
         modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.ScreenPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        CircularProgressIndicator(color = Colors.OnSurface, strokeWidth = 2.dp, modifier = Modifier.size(SPINNER_SIZE_DP.dp))
+        CircularProgressIndicator(color = Colors.Electric, strokeWidth = 2.dp, modifier = Modifier.size(SPINNER_SIZE_DP.dp))
         Spacer(modifier = Modifier.height(Spacing.ItemGap))
         if (stage == null) {
             // Brief pre-stage beat before the first ContractCallStage arrives.
@@ -461,9 +547,9 @@ private fun WorkingBoard(stage: ContractCallStage?) {
 
 @Composable
 private fun OccupiedBoard(message: String, onTakeDown: () -> Unit, onRefresh: () -> Unit, isEnabled: Boolean = true) {
-    Text("board is occupied", color = Colors.OnSurfaceDim, fontSize = Type.Caption, letterSpacing = 2.sp)
-    Spacer(modifier = Modifier.height(Spacing.SectionGap))
-    Text(message, color = Colors.OnSurface, fontSize = 18.sp, fontWeight = FontWeight.W300)
+    Text("board is occupied", color = Colors.Magenta, fontSize = Type.Caption, letterSpacing = 2.sp)
+    Spacer(modifier = Modifier.height(Spacing.ItemGap))
+    PinnedNote(message)
     Spacer(modifier = Modifier.height(Spacing.SectionGap))
     ActionButton("take down", enabled = isEnabled, dimmed = true, onClick = onTakeDown)
     Spacer(modifier = Modifier.height(Spacing.SmallGap))
@@ -485,9 +571,9 @@ private fun CallErrorView(message: String, onRetry: () -> Unit) {
 
 @Composable
 private fun ConnectingView(stage: String) {
-    DarkCard {
+    DarkCard(accent = Colors.Electric) {
         Column(Modifier.fillMaxWidth().padding(vertical = Spacing.ScreenPadding), horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(color = Colors.OnSurface, strokeWidth = 2.dp, modifier = Modifier.size(SPINNER_SIZE_DP.dp))
+            CircularProgressIndicator(color = Colors.Electric, strokeWidth = 2.dp, modifier = Modifier.size(SPINNER_SIZE_DP.dp))
             Spacer(modifier = Modifier.height(Spacing.ItemGap))
             Text(stage, color = Colors.OnSurfaceDim, fontSize = Type.Label)
         }
@@ -496,7 +582,7 @@ private fun ConnectingView(stage: String) {
 
 @Composable
 private fun ErrorView(message: String, onBack: () -> Unit) {
-    DarkCard(color = Colors.ErrorSurface) {
+    DarkCard(color = Colors.ErrorSurface, accent = Colors.Error) {
         Text(message, color = Colors.Error, fontSize = Type.Label)
         Spacer(modifier = Modifier.height(Spacing.SectionGap))
         ActionButton("back", enabled = true, dimmed = true, onClick = onBack)
@@ -569,12 +655,42 @@ private fun ChipRow(
 }
 
 @Composable
-private fun DarkCard(color: Color = Colors.Surface, content: @Composable () -> Unit) {
+private fun DarkCard(
+    color: Color = Colors.Surface,
+    accent: Color? = null,
+    content: @Composable () -> Unit,
+) {
+    // An inset parchment panel, ruled with a gold hairline (the section's hue if
+    // given) — flat, like a panel inked onto the sheet rather than a floating card.
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = color),
         shape = Shapes.Card,
-    ) { Column(Modifier.padding(Spacing.CardPadding)) { content() } }
+        border = BorderStroke(1.dp, (accent ?: Colors.Amber).copy(alpha = 0.55f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
+        Column(Modifier.padding(Spacing.CardPadding)) { content() }
+    }
+}
+
+/** A gilt manuscript divider: two gold rules flanking a small lozenge. */
+@Composable
+private fun OrnamentRule(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(Modifier.weight(1f).height(1.5.dp).background(Colors.Amber.copy(alpha = 0.7f)))
+        Canvas(Modifier.size(9.dp)) {
+            val s = size.minDimension
+            val lozenge = Path().apply {
+                moveTo(s / 2f, 0f); lineTo(s, s / 2f); lineTo(s / 2f, s); lineTo(0f, s / 2f); close()
+            }
+            drawPath(lozenge, Colors.Amber)
+        }
+        Box(Modifier.weight(1f).height(1.5.dp).background(Colors.Amber.copy(alpha = 0.7f)))
+    }
 }
 
 @Composable
@@ -585,31 +701,35 @@ private fun ActionButton(
     modifier: Modifier = Modifier.fillMaxWidth(),
     onClick: () -> Unit,
 ) {
-    val bg = when {
-        !enabled -> Colors.Disabled
-        dimmed -> Color.White.copy(alpha = 0.12f)
-        else -> Colors.OnSurface
-    }
+    // The primary CTA wears the brand gradient; secondary/disabled stay flat.
+    val primary = enabled && !dimmed
     val fg = when {
         !enabled -> Colors.OnSurfaceSubtle
         dimmed -> Colors.OnSurfaceDim
-        else -> Color.Black
+        else -> Colors.OnBright
+    }
+    val fill = when {
+        primary -> Modifier.background(Gradients.Brand)
+        dimmed -> Modifier.background(Colors.Surface).border(BorderStroke(1.dp, Colors.Amber.copy(alpha = 0.6f)), Shapes.Button)
+        else -> Modifier.background(Colors.Disabled)
     }
     Box(
         modifier = modifier
             .height(BUTTON_HEIGHT_DP.dp)
             .dappPressable(shape = Shapes.Button, enabled = enabled, onClick = onClick)
-            .background(bg),
+            .then(fill),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text,
+            text.uppercase(),
             color = fg,
-            fontSize = Type.Body,
-            fontWeight = FontWeight.Medium,
+            fontFamily = Cinzel,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 2.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 8.dp),
+            modifier = Modifier.padding(horizontal = 12.dp),
         )
     }
 }
@@ -618,7 +738,112 @@ private fun ActionButton(
 private fun textFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = Colors.OnSurface,
     unfocusedTextColor = Colors.OnSurface,
-    focusedBorderColor = Colors.OnSurfaceDim,
+    focusedBorderColor = Colors.Electric,
     unfocusedBorderColor = Colors.Disabled,
-    cursorColor = Colors.OnSurface,
+    cursorColor = Colors.Electric,
 )
+
+// ── Decorative / hero elements ──
+
+/** A slow horizontal aurora sweep — gives the hero title a living shimmer on video. */
+@Composable
+private fun animatedAuroraBrush(): Brush {
+    val transition = rememberInfiniteTransition(label = "aurora")
+    val shift by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 5200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "shift",
+    )
+    val span = 700f
+    return Brush.linearGradient(
+        colors = listOf(Colors.Violet, Colors.Electric, Colors.Teal, Colors.Magenta),
+        start = Offset(shift * span, 0f),
+        end = Offset(shift * span + span, span * 0.4f),
+    )
+}
+
+/**
+ * Ambient background: a few oversized, heavily-blurred gradient orbs that drift
+ * on a slow cycle. Each radial gradient already fades to transparent, so even
+ * where [blur] is a no-op (API < 31) the glow stays soft. Purely decorative —
+ * drawn behind all content, never interactive.
+ */
+@Composable
+private fun FloatingOrbs() {
+    val transition = rememberInfiniteTransition(label = "orbs")
+    val drift by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 12000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "drift",
+    )
+    Box(modifier = Modifier.fillMaxSize()) {
+        Orb(color = Colors.Violet, size = 360.dp, x = (-90).dp, y = (40 + drift * 70).dp)
+        Orb(color = Colors.Electric, size = 300.dp, x = (210 - drift * 90).dp, y = (300 + drift * 40).dp)
+        Orb(color = Colors.Magenta, size = 320.dp, x = (30 + drift * 70).dp, y = (600 - drift * 80).dp)
+    }
+}
+
+@Composable
+private fun Orb(color: Color, size: Dp, x: Dp, y: Dp) {
+    Box(
+        modifier = Modifier
+            .offset(x = x, y = y)
+            .size(size)
+            .blur(70.dp)
+            .background(
+                Brush.radialGradient(listOf(color.copy(alpha = 0.45f), Color.Transparent)),
+                CircleShape,
+            ),
+    )
+}
+
+/**
+ * The posted message, shown like a note pinned to a corkboard: a slightly tilted
+ * gradient card held by a tack. This is the connected screen's hero moment.
+ */
+@Composable
+private fun PinnedNote(message: String) {
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Spacing.SmallGap)
+                .rotate(-1.5f)
+                .clip(Shapes.Card)
+                .background(Gradients.Note)
+                .padding(horizontal = Spacing.CardPadding, vertical = Spacing.SectionGap),
+        ) {
+            Text(
+                "POSTED",
+                color = Colors.Magenta,
+                fontSize = Type.Caption,
+                letterSpacing = 3.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            Spacer(modifier = Modifier.height(Spacing.SmallGap))
+            Text(
+                message,
+                color = Colors.OnSurface,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.W600,
+                lineHeight = 28.sp,
+            )
+        }
+        // The wax seal fixing the notice to the board.
+        Box(
+            modifier = Modifier
+                .size(16.dp)
+                .clip(CircleShape)
+                .background(Colors.Magenta)
+                .border(BorderStroke(3.dp, Colors.OnSurface.copy(alpha = 0.15f)), CircleShape),
+        )
+    }
+}
