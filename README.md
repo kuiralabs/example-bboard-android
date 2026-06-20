@@ -7,22 +7,27 @@ it down** — each action is a real Compact contract transaction, proved on the
 device.
 
 It's the SDK's end-to-end "hello world": Sigil identity + embedded wallet (both
-drop-in SDK panels), then a contract with two circuits (`post` / `takeDown`) and
-a lossless typed ledger read for the current message.
+ride the SDK's floating `PanelBar`), then a contract with two circuits
+(`post` / `takeDown`) and a lossless typed ledger read for the current message.
 
 ## What it shows
 
-- **Identity** — `SigilStatusPanel` from the SDK. One biometric prompt forges a
-  passkey-derived DID + wallet seed (no seed phrase).
-- **Wallet** — `WalletStatusPanel` from the SDK. NIGHT + DUST balance, receive
-  QR, dust registration, network switch.
+- **Identity + Wallet** — the SDK's `PanelBar` in floating mode drops two
+  draggable chips over the parchment: a **sigil** chip (one biometric forges a
+  passkey-PRF DID + wallet seed, no seed phrase) and a **wallet** chip (NIGHT +
+  DUST balance, receive-QR, dust registration, the network picker, and
+  settings). Tap a chip to expand its sheet; drag it to dock at a screen edge.
+  Settings opens as a Compose popup that renders above the sheet — the neutral,
+  monochrome pills theming themselves into the host's brand.
 - **Contract** — `bboard.compact` (`contract/src/`), compiled to JS + proving
   keys under `contract/src/managed/bboard`. The `io.github.kuiralabs.contract`
   Gradle plugin syncs it into the app's assets at build (`kuiraContract { … }`
   in `app/build.gradle.kts`).
 - **dApp logic** — `BBoardViewModel` drives deploy → `post` → `takeDown`, with a
   staged progress bar (`ContractCallProgressBar`) over the prove/balance/submit
-  wait.
+  wait. The board reads its on-chain state via `BBoardRepository.fetchBoardState()`
+  on connect, then re-reads on the explicit **refresh** button — a manual,
+  pull-to-read flow (no live ledger subscription).
 
 ## Run
 
