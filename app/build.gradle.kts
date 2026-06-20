@@ -64,8 +64,8 @@ dependencies {
 
     // Hilt DI — required because `dapp-ui` ViewModels are `@HiltViewModel`
     // and resolved via `hiltViewModel()` at the Compose call site. BBoard
-    // uses the default passkey rpId (`nel349.github.io`) provided by
-    // `core:identity:IdentityModule`; no BBoard-side Hilt module needed.
+    // declares its own passkey rpId (`kuiralabs.github.io`) via its
+    // `IdentityConfigModule` — the SDK ships no default (see the integration guide).
     implementation("com.google.dagger:hilt-android:2.58")
     ksp("com.google.dagger:hilt-compiler:2.58")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
