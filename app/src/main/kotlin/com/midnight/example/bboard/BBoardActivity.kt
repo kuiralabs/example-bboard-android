@@ -21,15 +21,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
+
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
@@ -74,7 +73,7 @@ import com.midnight.kuira.dapp.ContractCallProgressBar
 import com.midnight.kuira.dapp.PanelBar
 import com.midnight.kuira.dapp.dappPressable
 import androidx.activity.result.contract.ActivityResultContracts
-import com.midnight.kuira.dapp.lock.SessionLockGate
+import com.midnight.kuira.dapp.wallet.WalletAppShell
 import com.midnight.kuira.sdk.walletruntime.WalletNotifications
 import com.midnight.kuira.dapp.sigil.SigilStatus
 import com.midnight.kuira.sdk.walletruntime.SessionLock
@@ -184,7 +183,7 @@ class BBoardActivity : FragmentActivity() {
         if (WalletNotifications.shouldRequest(this)) {
             notifPermission.launch(WalletNotifications.PERMISSION)
         }
-        setContent { SessionLockGate { BBoardApp() } }
+        setContent { WalletAppShell { BBoardApp() } }
     }
 
     override fun onUserInteraction() {
@@ -231,28 +230,21 @@ fun BBoardApp(viewModel: BBoardViewModel = hiltViewModel()) {
         CompositionLocalProvider(
             LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = Garamond),
         ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Top panel bar: sigil chip (left) + wallet chip (right). Pulled
-            // out of the scroll container so the chips stay pinned to the top
-            // of the screen as the host content scrolls underneath. Pushes
-            // the BBoard title below it — title no longer fights chip widths
-            // for the same row on narrow phones.
-            PanelBar(
-                network = selectedNetwork,
-                onNetworkChange = { viewModel.selectNetwork(it) },
-                onSigilStatusChange = { sigilStatus = it },
-            )
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(
-                        top = Spacing.SectionGap,
-                        start = Spacing.ScreenPadding,
-                        end = Spacing.ScreenPadding,
-                        bottom = Spacing.ScreenPadding,
-                    )
-            ) {
+        // Content fills the screen; the Kuira chips float OVER it as draggable widgets
+        // (PanelBar(floating = true), placed last so it overlays). The content keeps clear of
+        // the status bar itself now that the fixed top bar is gone.
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    top = Spacing.SectionGap,
+                    start = Spacing.ScreenPadding,
+                    end = Spacing.ScreenPadding,
+                    bottom = Spacing.ScreenPadding,
+                )
+        ) {
                 Text(
                     "BBOARD",
                     style = TextStyle(brush = animatedAuroraBrush(), fontFamily = Cinzel),
@@ -288,7 +280,13 @@ fun BBoardApp(viewModel: BBoardViewModel = hiltViewModel()) {
                     )
                 }
             }
-        }
+            // Kuira chips as draggable floaters (Phase 1) — overlays the content above.
+            PanelBar(
+                floating = true,
+                network = selectedNetwork,
+                onNetworkChange = { viewModel.selectNetwork(it) },
+                onSigilStatusChange = { sigilStatus = it },
+            )
         }
     }
 }
