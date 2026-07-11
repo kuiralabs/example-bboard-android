@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.midnight.kuira.contract.generated.BboardContract
 import com.midnight.kuira.core.compact.ContractCallException
 import com.midnight.kuira.core.compact.ContractCallStage
 import com.midnight.kuira.dapp.defaultLabel
@@ -295,7 +296,7 @@ class BBoardViewModel @Inject constructor(
             Log.i(TAG, "Posting: $message")
             _state.value = current.copy(boardState = BoardState.Working(null))
             try {
-                val receipt = bboard.call("post", message) { stage ->
+                val receipt = BboardContract(bboard).post(message) { stage ->
                     Log.i(TAG, "Post stage: ${stage.defaultLabel()}")
                     _state.value = current.copy(boardState = BoardState.Working(stage))
                 }
@@ -333,7 +334,7 @@ class BBoardViewModel @Inject constructor(
             Log.i(TAG, "Taking down")
             _state.value = current.copy(boardState = BoardState.Working(null))
             try {
-                bboard.call("takeDown") { stage ->
+                BboardContract(bboard).takeDown { stage ->
                     Log.i(TAG, "TakeDown stage: ${stage.defaultLabel()}")
                     _state.value = current.copy(boardState = BoardState.Working(stage))
                 }
