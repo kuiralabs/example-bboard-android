@@ -305,15 +305,20 @@ class BBoardViewModel @Inject constructor(
      * both rebuild and race on [contract] / [boundSdk]. This is the ONLY way the
      * screen obtains a handle, so no code path can reach a stale one.
      */
-    private suspend fun liveContract(): MidnightContract = handleMutex.withLock {
+    private suspend fun liveContract(): MidnightContract {
         val address = connectedAddress ?: error("BBoard not connected")
+        // Resolve the live SDK OUTSIDE the mutex: awaitSdk() can suspend (a device-lock window drops
+        // the SDK to null), and holding handleMutex across that suspend would stall every other
+        // contract op until unlock. The rebuild inside the lock is non-suspending.
         val sdk = sdkProvider.sdk.value ?: sdkProvider.awaitSdk()
-        contract?.let { if (sdk === boundSdk) return@withLock it }
-        val handle = buildBoardHandle(sdk.config, address, sdk.coinPublicKey)
-        contract = handle
-        repository = BBoardRepository(handle)
-        boundSdk = sdk
-        handle
+        return handleMutex.withLock {
+            contract?.let { if (sdk === boundSdk) return@withLock it }
+            val handle = buildBoardHandle(sdk.config, address, sdk.coinPublicKey)
+            contract = handle
+            repository = BBoardRepository(handle)
+            boundSdk = sdk
+            handle
+        }
     }
 
     private fun buildBoardHandle(
