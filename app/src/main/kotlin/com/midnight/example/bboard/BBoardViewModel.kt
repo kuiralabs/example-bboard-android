@@ -23,6 +23,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.math.BigInteger
 import javax.inject.Inject
@@ -61,9 +63,37 @@ class BBoardViewModel @Inject constructor(
     // Contract handle + its repository — BBoard's own state, reset on
     // [disconnect]. The SDK and its MidnightConfig are owned by
     // [MidnightSdkProvider] (shared with the wallet panel), so BBoard holds
-    // neither; each contract op pulls the config fresh off the shared SDK.
+    // neither; every contract op pulls a handle bound to the LIVE shared SDK
+    // via [liveContract].
+    //
+    // Why the handle can't be captured once: the shared SDK is REPLACED (and
+    // the old instance CLOSED) whenever the session re-authenticates —
+    // SessionLock drops the SDK on device-lock and MidnightSdkProvider
+    // republishes a fresh one on unlock — or the network switches. Closing the
+    // old SDK tears down its node RPC client (the submit WebSocket), so a
+    // handle built against it fails a later balance/submit with
+    // "Parent job is Completed" (the OkHttp engine's SupervisorJob is done).
+    // [liveContract] rebuilds the handle whenever the live SDK instance changed,
+    // and [handleMutex] serialises those rebuilds so concurrent ops never race.
     private var contract: MidnightContract? = null
     private var repository: BBoardRepository? = null
+    private var boundSdk: MidnightSdk? = null
+    private var connectedAddress: String? = null
+    private val handleMutex = Mutex()
+
+    init {
+        // Proactively re-bind on every SDK republish: after an unlock / network
+        // switch the wallet panel publishes a fresh SDK, so re-read the board
+        // off the live one (the old handle's indexer + node clients are dead).
+        viewModelScope.launch {
+            sdkProvider.sdk.collect { sdk ->
+                if (sdk != null && connectedAddress != null && sdk !== boundSdk) {
+                    Log.i(TAG, "Shared SDK republished — re-binding BBoard contract handle")
+                    refresh()
+                }
+            }
+        }
+    }
 
     // SDK construction + wallet seed bootstrap are owned by
     // [MidnightSdkProvider] (sdk:wallet-runtime). BBoard used to build its own
@@ -126,13 +156,8 @@ class BBoardViewModel @Inject constructor(
                 val midnightSdk = sdkProvider.awaitSdk()
 
                 // Connect to contract immediately — show state to user fast.
-                // The network is baked into midnightSdk.config; no separate
-                // copy needed (the wallet pill is the network's UI).
-                setupContract(
-                    cfg = midnightSdk.config,
-                    contractAddress = contractAddress,
-                    coinPublicKey = midnightSdk.coinPublicKey,
-                )
+                // setupContract binds the handle to the live shared SDK.
+                setupContract(contractAddress)
 
                 // Sync dust in background — UI shows progress bar, actions enabled when done
                 syncDustInBackground(midnightSdk)
@@ -202,11 +227,7 @@ class BBoardViewModel @Inject constructor(
                     _state.value = BBoardState.Connecting("Waiting for indexer... (${retries * 2}s)")
                 }
 
-                setupContract(
-                    cfg = midnightSdk.config,
-                    contractAddress = addr,
-                    coinPublicKey = midnightSdk.coinPublicKey,
-                )
+                setupContract(addr)
 
                 syncDustInBackground(midnightSdk)
             } catch (e: Exception) {
@@ -246,25 +267,12 @@ class BBoardViewModel @Inject constructor(
         }
     }
 
-    /** Shared setup: create contract handle, fetch state, transition to Connected. */
-    private suspend fun setupContract(
-        cfg: MidnightConfig,
-        contractAddress: String,
-        coinPublicKey: ByteArray,
-    ) {
+    /** Shared setup: bind the handle to the live SDK, fetch state, transition to Connected. */
+    private suspend fun setupContract(contractAddress: String) {
+        connectedAddress = contractAddress
         _state.value = BBoardState.Connecting("Loading contract...")
-        val bboard = MidnightContract.create(cfg) {
-            contractJs = context.assets
-                .open("runtime/bboard-contract.js")
-            address = contractAddress
-            witness("localSecretKey") { WitnessResult(null, SECRET_KEY.copyOf()) }
-            initialPrivateState = mapOf("secretKey" to SECRET_KEY.copyOf())
-            this.coinPublicKey = coinPublicKey
-        }
-        contract = bboard
-
-        val repo = BBoardRepository(bboard)
-        repository = repo
+        liveContract()
+        val repo = repository ?: return
 
         _state.value = BBoardState.Connecting("Fetching board state...")
         val boardContent = repo.fetchBoardState()
@@ -287,15 +295,49 @@ class BBoardViewModel @Inject constructor(
         )
     }
 
+    /**
+     * The contract handle bound to the CURRENT live shared SDK.
+     *
+     * Rebuilds the handle (and its repository) whenever the shared SDK instance
+     * has changed since it was last built — the SDK is swapped out (old one
+     * closed) on every session re-auth / network switch, and a handle bound to a
+     * closed SDK fails balance/submit. Mutex-guarded so two concurrent ops can't
+     * both rebuild and race on [contract] / [boundSdk]. This is the ONLY way the
+     * screen obtains a handle, so no code path can reach a stale one.
+     */
+    private suspend fun liveContract(): MidnightContract = handleMutex.withLock {
+        val address = connectedAddress ?: error("BBoard not connected")
+        val sdk = sdkProvider.sdk.value ?: sdkProvider.awaitSdk()
+        contract?.let { if (sdk === boundSdk) return@withLock it }
+        val handle = buildBoardHandle(sdk.config, address, sdk.coinPublicKey)
+        contract = handle
+        repository = BBoardRepository(handle)
+        boundSdk = sdk
+        handle
+    }
+
+    private fun buildBoardHandle(
+        cfg: MidnightConfig,
+        contractAddress: String,
+        coinPublicKey: ByteArray,
+    ): MidnightContract = MidnightContract.create(cfg) {
+        contractJs = context.assets.open("runtime/bboard-contract.js")
+        address = contractAddress
+        witness("localSecretKey") { WitnessResult(null, SECRET_KEY.copyOf()) }
+        initialPrivateState = mapOf("secretKey" to SECRET_KEY.copyOf())
+        this.coinPublicKey = coinPublicKey
+    }
+
     /** Post a message to the board. */
     fun post(message: String) {
         val current = _state.value as? BBoardState.Connected ?: return
-        val bboard = contract ?: return
+        if (connectedAddress == null) return
 
         viewModelScope.launch {
             Log.i(TAG, "Posting: $message")
             _state.value = current.copy(boardState = BoardState.Working(null))
             try {
+                val bboard = liveContract()
                 val receipt = BboardContract(bboard).post(message) { stage ->
                     Log.i(TAG, "Post stage: ${stage.defaultLabel()}")
                     _state.value = current.copy(boardState = BoardState.Working(stage))
@@ -328,12 +370,13 @@ class BBoardViewModel @Inject constructor(
     /** Take down the current post. */
     fun takeDown() {
         val current = _state.value as? BBoardState.Connected ?: return
-        val bboard = contract ?: return
+        if (connectedAddress == null) return
 
         viewModelScope.launch {
             Log.i(TAG, "Taking down")
             _state.value = current.copy(boardState = BoardState.Working(null))
             try {
+                val bboard = liveContract()
                 BboardContract(bboard).takeDown { stage ->
                     Log.i(TAG, "TakeDown stage: ${stage.defaultLabel()}")
                     _state.value = current.copy(boardState = BoardState.Working(stage))
@@ -357,9 +400,16 @@ class BBoardViewModel @Inject constructor(
     /** Refresh board state from indexer. */
     fun refresh() {
         val current = _state.value as? BBoardState.Connected ?: return
-        val repo = repository ?: return
+        if (connectedAddress == null) return
 
         viewModelScope.launch {
+            val repo = try {
+                liveContract()
+                repository ?: return@launch
+            } catch (e: Exception) {
+                Log.w(TAG, "Refresh skipped — no live SDK: ${e.message}")
+                return@launch
+            }
             val content = repo.fetchBoardState()
             val boardState = when (content) {
                 is BoardContent.Vacant -> BoardState.Vacant
@@ -381,6 +431,8 @@ class BBoardViewModel @Inject constructor(
     fun disconnect() {
         contract = null
         repository = null
+        boundSdk = null
+        connectedAddress = null
         _state.value = BBoardState.Setup
     }
 
