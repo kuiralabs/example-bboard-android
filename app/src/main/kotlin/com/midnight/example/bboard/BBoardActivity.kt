@@ -266,6 +266,7 @@ fun BBoardApp(viewModel: BBoardViewModel = hiltViewModel()) {
                 when (val s = state) {
                 is BBoardState.Setup -> SetupScreen(
                     sigilStatus = sigilStatus,
+                    hasIdentity = viewModel.hasIdentity(),
                     onConnectSdk = { addr -> viewModel.connectWithSdk(addr) },
                     onDeploySdk = { viewModel.deployAndConnect() },
                 )
@@ -303,6 +304,7 @@ fun BBoardApp(viewModel: BBoardViewModel = hiltViewModel()) {
 @Composable
 private fun SetupScreen(
     sigilStatus: SigilStatus,
+    hasIdentity: Boolean,
     onConnectSdk: (String) -> Unit,
     onDeploySdk: () -> Unit,
 ) {
@@ -318,7 +320,9 @@ private fun SetupScreen(
     //
     // Auto-hides once the user has forged (or restored) a sigil — the chip
     // is then the canonical entry point.
-    if (sigilStatus is SigilStatus.None || sigilStatus is SigilStatus.Error) {
+    // Not shown when a wallet can be opened without a forged sigil — a debuggable build with a
+    // dev seed is exactly that, and telling the user to forge one would be false.
+    if (!hasIdentity && (sigilStatus is SigilStatus.None || sigilStatus is SigilStatus.Error)) {
         DarkCard(accent = Colors.Amber) {
             Text("identity required", color = Colors.Amber, fontSize = Type.Caption, letterSpacing = 2.sp)
             Spacer(modifier = Modifier.height(Spacing.SmallGap))
@@ -360,10 +364,11 @@ private fun SetupScreen(
 
         Spacer(modifier = Modifier.height(Spacing.SectionGap))
 
-        // Gated on a forged sigil: without one, the wallet panel never builds
-        // the shared SDK, so connect would wait forever (awaitSdk). The
-        // "identity required" banner above explains why it's disabled.
-        ActionButton("connect", enabled = address.length == 64 && sigilStatus is SigilStatus.Forged) {
+        // Gated on being able to open a wallet at all: without that the panel never builds the
+        // shared SDK and connect would wait forever (awaitSdk). A forged sigil is one way; a
+        // debuggable build declaring a dev seed is another, and gating on the sigil alone left
+        // this disabled with a working wallet behind it.
+        ActionButton("connect", enabled = address.length == 64 && (hasIdentity || sigilStatus is SigilStatus.Forged)) {
             onConnectSdk(address)
         }
 
@@ -376,7 +381,7 @@ private fun SetupScreen(
             textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(Spacing.SmallGap))
-        ActionButton("create a new board", enabled = sigilStatus is SigilStatus.Forged) {
+        ActionButton("create a new board", enabled = hasIdentity || sigilStatus is SigilStatus.Forged) {
             onDeploySdk()
         }
         Spacer(modifier = Modifier.height(Spacing.TinyGap))

@@ -13,7 +13,6 @@ import com.midnight.kuira.core.compact.MidnightContract
 import com.midnight.kuira.core.compact.TransactionStatus
 import com.midnight.kuira.core.compact.WitnessResult
 import com.midnight.kuira.core.compact.proving.ProvingKeyManager
-import com.midnight.kuira.core.identity.sigil.SigilStateStore
 import com.midnight.kuira.core.ledger.api.TransactionSubmitter
 import com.midnight.kuira.sdk.MidnightSdk
 import com.midnight.kuira.core.network.MidnightNetwork
@@ -46,7 +45,6 @@ import javax.inject.Inject
 class BBoardViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val sdkProvider: MidnightSdkProvider,
-    private val sigilStateStore: SigilStateStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<BBoardState>(BBoardState.Setup)
@@ -57,6 +55,9 @@ class BBoardViewModel @Inject constructor(
     // BBoard no longer keeps its own NetworkPref mirror. The wallet panel seeds from
     // this and writes back through it; BBoard's contract ops read the same network off
     // the shared SDK config.
+    /** Can this app act on chain — a forged sigil, or a dev seed a debuggable build declares. */
+    fun hasIdentity(): Boolean = sdkProvider.hasIdentity()
+
     val selectedNetwork: StateFlow<MidnightNetwork> get() = sdkProvider.selectedNetwork
     fun selectNetwork(network: MidnightNetwork) = sdkProvider.selectNetwork(network)
 
@@ -140,7 +141,10 @@ class BBoardViewModel @Inject constructor(
      * belt-and-suspenders for any path that reaches an action anyway.
      */
     private fun requireSigilOrFail(): Boolean {
-        if (sigilStateStore.snapshot() == null) {
+        // Ask the SDK, not the sigil store. "Is there a sigil" is narrower than what this gate
+        // means — a debuggable build declaring a dev seed can open a wallet with no sigil forged,
+        // and reading the store directly reported "identity required" with that wallet ready.
+        if (!sdkProvider.hasIdentity()) {
             _state.value = BBoardState.Error("Forge your sigil first — tap the sigil chip up top.")
             return false
         }
