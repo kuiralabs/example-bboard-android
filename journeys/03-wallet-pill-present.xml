@@ -1,0 +1,16 @@
+<journey name="Wallet pill renders">
+  <description>
+    The SDK's wallet pill must render in the host app's top bar on a cold start, before any sigil
+    exists, showing the sigil chip and the NIGHT balance slot.
+
+    This is the drop-in panel the SDK promises consumers: if WalletAppShell stops mounting it, or
+    it throws during composition on a wallet-less session, a dApp loses its entire wallet surface
+    while the rest of the app still renders. Nothing in the SDK's own unit tests sees that,
+    because it only happens once the panel is hosted by a real app.
+  </description>
+  <actions>
+    <action>Verify the screen shows "Sigil"</action>
+    <action>Verify the screen shows "NIGHT"</action>
+    <action>Verify the screen does NOT show "Something went wrong"</action>
+  </actions>
+</journey>

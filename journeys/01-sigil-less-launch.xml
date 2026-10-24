@@ -1,0 +1,20 @@
+<journey name="Sigil-less launch">
+  <description>
+    A fresh install, before any sigil is forged, must reach a usable board screen and stay there.
+
+    This is a regression test for a trap found on a real device: SessionLock locked a session with
+    no sigil, and the only control on that screen was an unlock that called ensureSeedReady, which
+    throws SigilRequiredException every time when no sigil exists. The screen said "Authentication
+    didn't complete - tap to try again", inviting a retry that could never succeed, and the only
+    escape was force-stopping the app. Fixed in SessionLock by declining to lock a session that has
+    no seed to protect; this journey is what stops it coming back.
+  </description>
+  <actions>
+    <action>Verify the screen shows "BBOARD"</action>
+    <action>Verify the screen does NOT show "LOCKED"</action>
+    <action>Verify the screen does NOT show "Authentication didn't complete"</action>
+    <action>Verify the screen shows "identity required"</action>
+    <action>Verify the screen shows a "CREATE A NEW BOARD" control</action>
+    <action>Verify the screen shows a "CONNECT" control</action>
+  </actions>
+</journey>

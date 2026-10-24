@@ -1,0 +1,18 @@
+<journey name="Board actions reachable before a sigil">
+  <description>
+    The join-a-board and create-a-board affordances must be present and described on first run,
+    and the app must say plainly that an identity is needed rather than silently disabling itself.
+
+    This pins the screen a newcomer actually lands on. The quickstart sends people here, so a
+    change that removes the address field, drops the "64 characters" hint, or stops explaining
+    what CREATE A NEW BOARD does breaks the documented path without breaking any unit test.
+  </description>
+  <actions>
+    <action>Verify the screen shows "join a board"</action>
+    <action>Verify the screen shows "contract address"</action>
+    <action>Verify the screen shows "A contract address is 64 characters"</action>
+    <action>Verify the screen shows "or start a new board"</action>
+    <action>Verify the screen shows "Deploys a fresh board on-chain"</action>
+    <action>Verify the screen shows "Tap the sigil chip in the top bar to forge one"</action>
+  </actions>
+</journey>
