@@ -10,7 +10,6 @@ import com.midnight.kuira.core.compact.ContractCallStage
 import com.midnight.kuira.dapp.defaultLabel
 import com.midnight.kuira.core.compact.MidnightConfig
 import com.midnight.kuira.core.compact.MidnightContract
-import com.midnight.kuira.core.compact.TransactionStatus
 import com.midnight.kuira.core.compact.WitnessResult
 import com.midnight.kuira.core.compact.proving.ProvingKeyManager
 import com.midnight.kuira.core.ledger.api.TransactionSubmitter
@@ -352,21 +351,19 @@ class BBoardViewModel @Inject constructor(
                     _state.value = current.copy(boardState = BoardState.Working(stage))
                 }
 
-                if (receipt.status == TransactionStatus.SUBMITTED) {
-                    Log.i(TAG, "Post submitted! total=${receipt.timings.totalMs}ms")
+                Log.i(TAG, "Post ${receipt.status} tx=${receipt.txHash} block=${receipt.blockHeight} total=${receipt.timings.totalMs}ms")
 
-                    // `appMetadata` (a simulated game-state blob computed post-tx
-                    // and round-tripped through the backup pipeline) used to be
-                    // populated here. The backup pipeline lives in the sigil
-                    // panel module now and doesn't take host-specific metadata
-                    // in its v1 API — when the panel grows a metadata hook,
-                    // re-introduce the buildAppMetadata call site here.
+                // `appMetadata` (a simulated game-state blob computed post-tx
+                // and round-tripped through the backup pipeline) used to be
+                // populated here. The backup pipeline lives in the sigil
+                // panel module now and doesn't take host-specific metadata
+                // in its v1 API — when the panel grows a metadata hook,
+                // re-introduce the buildAppMetadata call site here.
 
-                    _state.value = current.copy(
-                        boardState = BoardState.Occupied(message = message),
-                        lastTimingMs = receipt.timings.totalMs,
-                    )
-                }
+                _state.value = current.copy(
+                    boardState = BoardState.Occupied(message = message),
+                    lastTimingMs = receipt.timings.totalMs,
+                )
             } catch (e: ContractCallException) {
                 Log.e(TAG, "Post failed", e)
                 _state.value = current.copy(
